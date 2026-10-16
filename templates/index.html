@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QuickQuiz Student</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            margin: 0; display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; color: #333; text-align: center;
+            overflow: hidden; touch-action: manipulation;
+        }
+
+        .container {
+            background: white; padding: 20px; border-radius: 20px;
+            width: 90%; max-width: 500px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3); transition: all 0.3s ease;
+        }
+
+        /* GİRİŞ EKRANI */
+        input {
+            width: 80%; padding: 15px; margin: 15px 0;
+            border: 2px solid #ddd; border-radius: 10px; font-size: 1.2rem; text-align: center; outline: none;
+        }
+        button.join-btn {
+            background-color: #27ae60; color: white; border: none;
+            padding: 15px 40px; font-size: 1.3rem; border-radius: 10px;
+            cursor: pointer; width: 100%; font-weight: bold;
+        }
+        button.join-btn:active { transform: translateY(4px); }
+
+        /* OYUN BUTONLARI */
+        .game-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px;
+            margin-top: 20px; height: 320px;
+        }
+        .game-btn {
+            font-size: 3.5rem; border: none; border-radius: 15px;
+            color: white; cursor: pointer; position: relative;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.2); transition: all 0.1s;
+        }
+        .game-btn:active { transform: translateY(6px); box-shadow: none; opacity: 0.8; }
+        
+        .btn-0 { background-color: #e74c3c; } 
+        .btn-1 { background-color: #3498db; }
+        .btn-2 { background-color: #f1c40f; }
+        .btn-3 { background-color: #2ecc71; }
+
+        /* SIRALAMA KUTUSU */
+        #my-rank-display {
+            display: none; 
+            background-color: #f1c40f; 
+            color: #2c3e50;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            font-weight: 900;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            border: 3px solid #f39c12;
+        }
+
+        /* Podyum ve Liste */
+        .podium { display: flex; justify-content: center; align-items: flex-end; height: 220px; margin-bottom: 20px; width: 100%; gap:5px;}
+        .podium-item { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; color: white; width: 30%; }
+        .p-bar { width: 100%; border-radius: 8px 8px 0 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; font-size: 1.5rem; font-weight:bold;}
+        .p-name { margin-bottom: 5px; font-size: 0.9rem; color: #333; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;}
+        
+        .first .p-bar  { height: 140px; background: #FFD700; order: 2; font-size: 2rem;}
+        .second .p-bar { height: 100px; background: #C0C0C0; order: 1; }
+        .third .p-bar  { height: 70px;  background: #CD7F32; order: 3; }
+
+        .list-scroll { max-height: 150px; overflow-y: auto; text-align: left; margin-top: 10px; border-top: 2px solid #eee;}
+        .list-item { padding: 10px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; font-size: 1.1rem;}
+        
+        .hidden { display: none !important; }
+
+        /* Bildirim Ekranı */
+        #feedback-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; justify-content: center; align-items: center;
+            font-size: 3rem; font-weight: bold; color: white; z-index: 999; flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="feedback-overlay"></div>
+
+    <div class="container" id="main-card">
+        
+        <div id="login-screen">
+            <h1>QuickQuiz</h1>
+            <input type="text" id="nickname" placeholder="Enter Nickname" maxlength="12">
+            <br><br>
+            <button class="join-btn" onclick="joinGame()">JOIN GAME</button>
+        </div>
+
+        <div id="wait-screen" class="hidden">
+            <h1 style="font-size:4rem; margin:0;">⏳</h1>
+            <h2>Waiting for Host...</h2>
+        </div>
+
+        <div id="game-screen" class="hidden">
+            <h2 style="color:#555;">Select Answer</h2>
+            <div class="game-grid">
+                <button class="game-btn btn-0" ontouchstart="sendAnswer(0)" onclick="sendAnswer(0)">▲</button>
+                <button class="game-btn btn-1" ontouchstart="sendAnswer(1)" onclick="sendAnswer(1)">◆</button>
+                <button class="game-btn btn-2" ontouchstart="sendAnswer(2)" onclick="sendAnswer(2)">●</button>
+                <button class="game-btn btn-3" ontouchstart="sendAnswer(3)" onclick="sendAnswer(3)">■</button>
+            </div>
+        </div>
+
+        <div id="leaderboard-section" class="hidden">
+            <h2 style="color:#f1c40f; margin-top:0;">🏆 RESULTS 🏆</h2>
+            
+            <div id="my-rank-display"></div>
+
+            <div class="podium" id="podium-area"></div>
+            <div class="list-scroll" id="list-area"></div>
+        </div>
+
+    </div>
+
+    <script>
+        var socket = io();
+        // İSMİ HAFIZADAN ÇEK (Sayfa yenilenirse kaybolmasın diye)
+        var myName = localStorage.getItem("saved_nickname") || "";
+        var hasAnswered = false;
+
+        // Sayfa açılınca, eğer isim kayıtlıysa kutuya yaz
+        if(myName) { document.getElementById('nickname').value = myName; }
+
+        function joinGame() {
+            var input = document.getElementById('nickname');
+            var rawName = input.value;
+            
+            if(rawName.trim() === "") { alert("Please enter a name!"); return; }
+            
+            // BOŞLUKLARI TEMİZLE VE KAYDET
+            myName = rawName.trim();
+            localStorage.setItem("saved_nickname", myName); // Hafızaya at
+
+            socket.emit('join_game', {'nickname': myName}); 
+            
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('wait-screen').classList.remove('hidden');
+        }
+
+        function sendAnswer(index) {
+            if(hasAnswered) return;
+            hasAnswered = true;
+            if(navigator.vibrate) navigator.vibrate(50);
+            socket.emit('send_answer', {'answer': index});
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('wait-screen').classList.remove('hidden');
+        }
+
+        socket.on('new_question', function() {
+            hasAnswered = false;
+            showScreen('game-screen');
+            document.getElementById('feedback-overlay').style.display = 'none';
+        });
+
+        socket.on('time_up', function() {
+            showScreen('wait-screen');
+        });
+
+        socket.on('feedback', function(data) {
+            var overlay = document.getElementById('feedback-overlay');
+            var card = document.getElementById('main-card');
+            card.classList.add('hidden');
+            overlay.style.display = 'flex';
+            
+            if(data.correct) {
+                overlay.innerHTML = "<div>CORRECT! 🎉</div>";
+                overlay.style.backgroundColor = "#27ae60";
+            } else {
+                overlay.innerHTML = "<div>WRONG ❌</div>";
+                overlay.style.backgroundColor = "#c0392b";
+            }
+            setTimeout(function() {
+                overlay.style.display = 'none';
+                card.classList.remove('hidden');
+            }, 3000);
+        });
+
+        socket.on('game_over', function(data) {
+            showScreen('leaderboard-section');
+            var players = data.players || [];
+            players.sort((a, b) => b.score - a.score);
+
+            // --- KENDİ SIRANI BUL (GELİŞTİRİLMİŞ VERSİYON) ---
+            var myRank = -1;
+            var rankDiv = document.getElementById('my-rank-display');
+            
+            // Küçük harf/büyük harf ve boşluk duyarlılığını kaldırarak ara
+            for(var i=0; i<players.length; i++) {
+                if(players[i].name.trim() === myName.trim()) {
+                    myRank = i + 1;
+                    break;
+                }
+            }
+
+            // Kutuyu ayarla
+            if(myRank !== -1) {
+                rankDiv.innerHTML = "YOU RANKED #" + myRank;
+                rankDiv.style.display = "block"; // GÖRÜNÜR YAP
+            } else {
+                rankDiv.innerHTML = "Rank: " + (i+1) + " (Not on list?)";
+                rankDiv.style.display = "none"; 
+            }
+
+            // PODYUMU OLUŞTUR
+            var podiumHTML = "";
+            if(players.length > 0) podiumHTML += makePodium(players[0], "1", "first");
+            if(players.length > 1) podiumHTML += makePodium(players[1], "2", "second");
+            if(players.length > 2) podiumHTML += makePodium(players[2], "3", "third");
+            document.getElementById('podium-area').innerHTML = podiumHTML;
+
+            // LİSTEYİ OLUŞTUR
+            var listHTML = "";
+            for(var i=3; i<players.length; i++) {
+                listHTML += `
+                <div class="list-item">
+                    <b style="margin-right:10px;">#${i+1}</b>
+                    <span style="flex-grow:1;">${players[i].name}</span>
+                    <span>${players[i].score}</span>
+                </div>`;
+            }
+            document.getElementById('list-area').innerHTML = listHTML;
+        });
+
+        function makePodium(p, rank, cls) {
+            return `<div class="podium-item ${cls}">
+                        <div class="p-name">${p.name}</div>
+                        <div class="p-bar">${rank}</div>
+                        <div>${p.score}</div>
+                    </div>`;
+        }
+
+        function showScreen(id) {
+            // Hepsini gizle
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('wait-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.add('hidden');
+            document.getElementById('leaderboard-section').classList.add('hidden');
+            document.getElementById('main-card').classList.remove('hidden');
+            
+            // İsteneni aç
+            document.getElementById(id).classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
